@@ -194,3 +194,17 @@ make dist       # dist/cfd-client.exe (Windows) + dist/cfd-client-linux-amd64
 Both `dist` targets are static (`CGO_ENABLED=0`) and stripped (~5.7 MB). Other
 platforms are one `GOOS`/`GOARCH` away, e.g.
 `GOOS=linux GOARCH=arm64 go build -o cfd-client .`.
+
+### Keep the two in sync
+
+The Python and Go clients are maintained as **feature-equivalent** — they are
+the same tool in two languages. Any change to the client-facing surface must
+land in **both**, in the same change:
+
+- a new/changed subcommand, flag, or argument;
+- the config format or its search order;
+- the stdout/exit-code contract (JSON envelope, `{"progress": n}` lines);
+- a backend endpoint or request/response shape the client depends on.
+
+Treat a change that touches only one client as incomplete. (Internal-only
+refactors that don't alter behaviour needn't be mirrored line-for-line.)

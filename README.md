@@ -168,3 +168,29 @@ fail: exit 1  → read error string from the JSON
 Uploading the case zip is only the first step; triggering setup/solve and
 reading run status use the backend's other `/api/*` endpoints (see the backend
 `api.yml`), which can be added to this tool later as needed.
+
+## Compiled client (Go)
+
+`ida_cfd_client.py` has a drop-in Go port (`main.go`, `client.go`, `config.go`)
+with the **same CLI and the same output contract** — a subprocess caller needs
+no changes. The motivation is startup latency: IDA ICE invokes the client once
+per backend interaction, and the Go binary starts in ~2 ms versus ~100–200 ms
+for the Python interpreter.
+
+- **Dependency-free**: standard library only (no `requests`, no runtime to
+  install) — a single static executable.
+- **Same config**: reads the same `cfd_client_config.json`, same search order,
+  same `--config/--host/--server-url/--progress` flags and subcommands.
+- **Same stdout contract**: one JSON object per call (`{"ok",...}`), throttled
+  `{"progress": n}` lines during transfers, exit 0/1, diagnostics on stderr.
+
+Build (needs only the Go toolchain — no C compiler, no target machine):
+
+```
+make build      # native binary: ./cfd-client
+make dist       # dist/cfd-client.exe (Windows) + dist/cfd-client-linux-amd64
+```
+
+Both `dist` targets are static (`CGO_ENABLED=0`) and stripped (~5.7 MB). Other
+platforms are one `GOOS`/`GOARCH` away, e.g.
+`GOOS=linux GOARCH=arm64 go build -o cfd-client .`.

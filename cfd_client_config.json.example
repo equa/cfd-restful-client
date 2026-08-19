@@ -1,0 +1,34 @@
+{
+    "default_backend": "vmhost",
+    "backends": {
+        "wsl": {
+            "server_url": "http://localhost:5001",
+            "frontend_url": null,
+            "timeout": 600,
+            "verify_tls": true
+        },
+        "server": {
+            "server_url": "http://123.456.789.123:5001",
+            "frontend_url": null,
+            "timeout": 600,
+            "verify_tls": true
+        },
+        "vmhost": {
+            "server_url": "http://192.168.122.1:5001",
+            "frontend_url": null,
+            "timeout": 600,
+            "verify_tls": true
+        }
+    },
+    "wsl": {
+        "wsl_distribution": "acme-linux-v52",
+        "wsl_version": 2,
+        "default_username": "cfd",
+        "default_uid": 2345,
+        "inst_dir": "/opt",
+        "cfd_bundle_url": "https://files.acme.se/delivery/cfd/prod/ubuntu-24.04-openfoam13-acme-52dev-cfd-bundle.tgz",
+        "wsl_image_url": "https://files.acme.se/delivery/cfd/prod/ubuntu-24.04-openfoam13-acme-52dev-wsl-image.tar.zip",
+        "openssl_public_key_file": "wslmanage_openssl_key.pem",
+        "api_port": 5001
+    }
+}

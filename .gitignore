@@ -217,3 +217,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Go build artifacts (native binary from `make build`; dist/ covered above)
+/cfd-client
+/cfd-client.exe

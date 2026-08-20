@@ -95,14 +95,15 @@ func (c *Client) rw(name string) string { return c.base + "/api/rw/" + escPath(n
 
 func serverMessage(body []byte) string {
 	var m map[string]any
-	if err := json.Unmarshal(body, &m); err == nil {
+	if json.Unmarshal(body, &m) == nil {
 		for _, k := range []string{"message", "error"} {
 			if v, ok := m[k]; ok && v != nil {
 				return fmt.Sprint(v)
 			}
 		}
-		return fmt.Sprint(m)
 	}
+	// No message/error field (or non-JSON body): fall back to the raw text,
+	// capped -- cleaner than Go's map formatting for a bare {} body.
 	s := strings.TrimSpace(string(body))
 	if len(s) > 200 {
 		s = s[:200]
@@ -112,12 +113,17 @@ func serverMessage(body []byte) string {
 
 // do issues the request and applies the shared error handling: network error,
 // an optional friendly 404, and the non-2xx check. On success the response is
-// returned with its Body still open (for streaming); on failure the Body is
-// read (for the message) and closed.
-func (c *Client) do(req *http.Request, ctx, notFound string) (*http.Response, error) {
+// returned with its Body still open (for streaming). When empty404 is set, a
+// 404 is not an error -- do returns (nil, nil) so a lookup can report "not
+// found" as an empty result rather than a failure (the query itself succeeded).
+func (c *Client) do(req *http.Request, ctx, notFound string, empty404 bool) (*http.Response, error) {
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %v", ctx, err)
+	}
+	if empty404 && resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, nil
 	}
 	if notFound != "" && resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
@@ -131,8 +137,9 @@ func (c *Client) do(req *http.Request, ctx, notFound string) (*http.Response, er
 	return resp, nil
 }
 
-// requestJSON does a request and decodes the JSON body. An empty body yields {}.
-func (c *Client) requestJSON(method, u, ctx, notFound string, headers map[string]string) (any, error) {
+// requestJSON does a request and decodes the JSON body. An empty body -- or, if
+// empty404 is set, a 404 -- yields {}.
+func (c *Client) requestJSON(method, u, ctx, notFound string, empty404 bool, headers map[string]string) (any, error) {
 	req, err := http.NewRequest(method, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %v", ctx, err)
@@ -140,9 +147,12 @@ func (c *Client) requestJSON(method, u, ctx, notFound string, headers map[string
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := c.do(req, ctx, notFound)
+	resp, err := c.do(req, ctx, notFound, empty404)
 	if err != nil {
 		return nil, err
+	}
+	if resp == nil { // empty404: not found -> empty result
+		return map[string]any{}, nil
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
@@ -157,6 +167,15 @@ func (c *Client) requestJSON(method, u, ctx, notFound string, headers map[string
 		return nil, fmt.Errorf("%s: invalid JSON in response: %v", ctx, err)
 	}
 	return out, nil
+}
+
+// orEmpty maps a null/absent JSON result to {} so a "list a specific item" miss
+// reads consistently across ls / ls-fs / ls-wd (some backends return null).
+func orEmpty(v any) any {
+	if v == nil {
+		return map[string]any{}
+	}
+	return v
 }
 
 // -- operations ------------------------------------------------------------- //
@@ -207,7 +226,7 @@ func (c *Client) uploadFile(localPath, remoteName string) (any, error) {
 	// Content-Length (which the server requires) rather than chunked encoding.
 	req.ContentLength = size
 	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := c.do(req, "upload", "")
+	resp, err := c.do(req, "upload", "", false)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +326,7 @@ func (c *Client) download(remoteName, localDest string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("download: %v", err)
 	}
-	resp, err := c.do(req, "download", "not found on server: "+remoteName)
+	resp, err := c.do(req, "download", "not found on server: "+remoteName, false)
 	if err != nil {
 		return nil, err
 	}
@@ -348,37 +367,52 @@ func (c *Client) download(remoteName, localDest string) (any, error) {
 }
 
 // lsFs lists the flat upload/transfer area (/api/rw), or one file's info.
+// A missing name yields {} (server returns it; normalised for safety).
 func (c *Client) lsFs(name string) (any, error) {
 	tail := ""
 	if name != "" {
 		tail = "/" + escPath(name)
 	}
-	return c.requestJSON("GET", c.base+"/api/rw/ls"+tail, "ls-fs", "", nil)
+	res, err := c.requestJSON("GET", c.base+"/api/rw/ls"+tail, "ls-fs", "", false, nil)
+	if err != nil {
+		return nil, err
+	}
+	return orEmpty(res), nil
 }
 
 // newest returns the info of the newest transfer-area file sharing a stem.
 func (c *Client) newest(stem string) (any, error) {
-	return c.requestJSON("GET", c.base+"/api/rw/newest/"+url.PathEscape(stem), "newest", "", nil)
+	return c.requestJSON("GET", c.base+"/api/rw/newest/"+url.PathEscape(stem), "newest", "", false, nil)
 }
 
-// lsPath lists any path within the server's CFD_HOME (/api/ls).
+// lsPath lists any path within the server's CFD_HOME (/api/ls). A missing path
+// (the server 404s -- the file browser relies on that) is reported as an empty
+// result with success: the lookup ran, the answer is "nothing there".
 func (c *Client) lsPath(p string) (any, error) {
-	return c.requestJSON("GET", c.base+"/api/ls/"+escPath(p), "ls",
-		"path not found under CFD_HOME: "+p, nil)
+	res, err := c.requestJSON("GET", c.base+"/api/ls/"+escPath(p), "ls", "", true, nil)
+	if err != nil {
+		return nil, err
+	}
+	return orEmpty(res), nil
 }
 
 // lsWd lists working directories under CFD_HOME, or one case's contents.
+// A missing case yields {} (normalised in case a backend returns null).
 func (c *Client) lsWd(caseName string) (any, error) {
 	tail := ""
 	if caseName != "" {
 		tail = "/" + escPath(caseName)
 	}
-	return c.requestJSON("GET", c.base+"/api/wd/ls"+tail, "ls-wd", "", nil)
+	res, err := c.requestJSON("GET", c.base+"/api/wd/ls"+tail, "ls-wd", "", false, nil)
+	if err != nil {
+		return nil, err
+	}
+	return orEmpty(res), nil
 }
 
 // metadata returns full metadata for a working-dir case.
 func (c *Client) metadata(casePath string) (any, error) {
-	return c.requestJSON("GET", c.base+"/api/metadata/"+escPath(casePath), "metadata", "", nil)
+	return c.requestJSON("GET", c.base+"/api/metadata/"+escPath(casePath), "metadata", "", false, nil)
 }
 
 // exists reports whether a transfer-area file exists (lsFs returns {} if absent).
@@ -393,12 +427,12 @@ func (c *Client) exists(remoteName string) (bool, error) {
 // delete removes a transfer-area file.
 func (c *Client) delete(remoteName string) (any, error) {
 	return c.requestJSON("DELETE", c.rw(remoteName), "delete",
-		"not found on server: "+remoteName, nil)
+		"not found on server: "+remoteName, false, nil)
 }
 
 // cleanup asks the server to purge old files.
 func (c *Client) cleanup() (any, error) {
-	return c.requestJSON("GET", c.base+"/api/rw/cleanup_folders", "cleanup", "", nil)
+	return c.requestJSON("GET", c.base+"/api/rw/cleanup_folders", "cleanup", "", false, nil)
 }
 
 // upstage stages an already-uploaded file into a backend working directory.
@@ -417,7 +451,7 @@ func (c *Client) upstage(remoteName, wd string) (any, error) {
 	notFound := fmt.Sprintf(
 		"backend could not reach the uploaded file or resolve the working dir "+
 			"(url=%s, wd=%s)", fileURL, wd)
-	return c.requestJSON("POST", endpoint, "upstage", notFound,
+	return c.requestJSON("POST", endpoint, "upstage", notFound, false,
 		map[string]string{"Accept": "application/json"})
 }
 
@@ -428,7 +462,7 @@ func (c *Client) downstage(casePath string) (any, error) {
 	}
 	endpoint := c.base + "/api/downstage/" + escPath(casePath)
 	return c.requestJSON("POST", endpoint, "downstage",
-		"case not found on server: "+casePath,
+		"case not found on server: "+casePath, false,
 		map[string]string{"Accept": "application/json"})
 }
 

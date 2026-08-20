@@ -88,6 +88,12 @@ goes to stderr, so stdout can be parsed as JSON unconditionally:
 Global flags (before the command): `--config <path>`, `--host <tag>`,
 `--server-url <url>`, `--progress`.
 
+**Missing items read consistently.** A lookup for something that isn't there —
+`ls <path>`, or `ls-fs`/`ls-wd` with a name — succeeds with an **empty result**
+(`{"ok": true, "exit": 0, "result": {}}`), not an error: the query ran, the
+answer is "nothing there". Genuine failures (server unreachable, 5xx, a bad
+request) still exit 1. (`exists` is the boolean form of the same idea.)
+
 ```sh
 cfd-client [--host TAG] upload    <local_path> [--name REMOTE]  # file, or dir (zipped)
 cfd-client [--host TAG] download  <remote_name> <local_dest>    # dest file or dir

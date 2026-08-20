@@ -1,11 +1,11 @@
-// Command cfd-client moves CFD case data to/from the EQUA cfd-backend.
+// Command cfd-client moves CFD case data to/from the EQUA cfd-backend. IDA ICE
+// calls it as a subprocess.
 //
-// A compiled port of ida_cfd_client.py with the same CLI and the same output
-// contract: stdout carries ONLY a single JSON object (one line); with --progress
-// on upload/download, throttled {"progress": <pct>} lines precede it. The exit
-// code is 0 on success, 1 on failure (including bad arguments). All human /
-// diagnostic text goes to stderr. So a subprocess caller (IDA ICE) can parse
-// stdout as JSON unconditionally and branch on the code.
+// Output contract: stdout carries ONLY a single JSON object (one line); with
+// --progress on upload/download, throttled {"progress": <pct>} lines precede it.
+// The exit code is 0 on success, 1 on failure (including bad arguments). All
+// human / diagnostic text goes to stderr. So a subprocess caller (IDA ICE) can
+// parse stdout as JSON unconditionally and branch on the code.
 package main
 
 import (

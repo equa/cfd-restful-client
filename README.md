@@ -195,16 +195,12 @@ Both `dist` targets are static (`CGO_ENABLED=0`) and stripped (~5.7 MB). Other
 platforms are one `GOOS`/`GOARCH` away, e.g.
 `GOOS=linux GOARCH=arm64 go build -o cfd-client .`.
 
-### Keep the two in sync
+### Status: Go is the maintained client
 
-The Python and Go clients are maintained as **feature-equivalent** — they are
-the same tool in two languages. Any change to the client-facing surface must
-land in **both**, in the same change:
+The project is standardising on the **Go client** — the compiled binary spawns
+far faster than the Python interpreter, most noticeably on Windows, where IDA
+ICE invokes it per interaction. New work goes into the Go client.
 
-- a new/changed subcommand, flag, or argument;
-- the config format or its search order;
-- the stdout/exit-code contract (JSON envelope, `{"progress": n}` lines);
-- a backend endpoint or request/response shape the client depends on.
-
-Treat a change that touches only one client as incomplete. (Internal-only
-refactors that don't alter behaviour needn't be mirrored line-for-line.)
+`ida_cfd_client.py` is kept for reference/fallback but is **no longer maintained
+in lockstep** — it may lag the Go client and can be removed once the Go binary
+is deployed in the IDA ICE tree.

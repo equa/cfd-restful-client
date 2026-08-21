@@ -28,6 +28,13 @@ Both `dist` targets are static (`CGO_ENABLED=0`) and stripped (~5.7 MB). Other
 platforms are one `GOOS`/`GOARCH` away, e.g.
 `GOOS=linux GOARCH=arm64 go build -o cfd-client .`.
 
+On Windows without `make`, use the PowerShell script — it builds
+`cfd-client.exe` and smoke-tests it (--help, config, and the error contract):
+
+```powershell
+./build.ps1
+```
+
 Everything below uses `cfd-client`; on Windows it is `cfd-client.exe`.
 
 ## Configuration

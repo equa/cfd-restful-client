@@ -87,6 +87,8 @@ usage: cfd-client [--config PATH] [--host TAG] [--server-url URL] [--progress] <
   exists    <remote_name>
   rm        <remote_name>
   upstage   <remote_name> [--wd NAME]   stage an uploaded file server-side
+  ensure    <case-id> [--force]         make sure a case is staged (resume); backend
+                                        stages from the file server if needed
   downstage <case_path>                 pack a processed case, publish for download
   url       [--open]        print (or open) the cfd-frontend URL
   config                    dump the resolved backend config
@@ -317,6 +319,17 @@ func run(args []string) int {
 			return emitErr("usage error: upstage requires <remote_name>")
 		}
 		return dispatch(client.upstage(pos[0], wd))
+
+	case "ensure":
+		force := false
+		pos, err := parseCmd(cmdArgs, map[string]*bool{"force": &force}, nil)
+		if err != nil {
+			return emitErr("usage error: " + err.Error())
+		}
+		if len(pos) != 1 {
+			return emitErr("usage error: ensure requires <case-id>")
+		}
+		return dispatch(client.ensure(pos[0], force))
 
 	case "downstage":
 		pos, err := parseCmd(cmdArgs, nil, nil)

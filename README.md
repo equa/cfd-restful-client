@@ -112,6 +112,7 @@ cfd-client [--host TAG] newest    <STEM>   # info of newest transfer-area file s
 cfd-client [--host TAG] exists    <remote_name>
 cfd-client [--host TAG] rm        <remote_name>
 cfd-client [--host TAG] upstage   <remote_name> [--wd <name-or-path>]  # stage server-side
+cfd-client [--host TAG] ensure    <case-id> [--force]  # resume: ensure staged (least work)
 cfd-client [--host TAG] downstage <case_path>                          # pack + publish for download
 cfd-client [--host TAG] url       [--open]  # print / open the cfd-frontend
 cfd-client [--host TAG] config              # dump the resolved backend config
@@ -146,6 +147,22 @@ cockpit page). The backend starts the unpack as a background job and replies
 > the backend's own service port (`:5001`) when the client runs on the host. A
 > plain `upload`/`download`/`ls` is unaffected (only the client talks to the
 > server); it's specifically upstage's backend-initiated fetch that needs this.
+
+`ensure` is the **resume** entry point: it makes a case usable on the backend
+with the least work, so you don't re-upload what the server already has. The
+backend replies (as `result`):
+- `{"status": "ready", "state": ...}` — already staged, or just staged from the
+  file server (no upload); open the SPA.
+- `{"status": "need_upload"}` — the server has nothing for this case; `upload`
+  it, then call `ensure` again.
+
+The backend finds the case on the file server itself (it knows its own file
+server), so — unlike `upstage` — you pass **no URL**, only the case-id, and the
+reachability caveat above doesn't apply. `--force` re-stages from the file-server
+upload even when a copy is already staged (a clean replace) — for when you know a
+*different* backend holds the newer copy and this one's is stale; you own that
+call. A typical resume is one call: `cfd-client ensure <case-id>` → if
+`need_upload`, `upload` then `ensure` again.
 
 `downstage` is the reverse: it packs the processed case at `case_path`
 (reconstruct + zip) and publishes it to the server's file store as

@@ -456,6 +456,24 @@ func (c *Client) upstage(remoteName, wd string) (any, error) {
 		map[string]string{"Accept": "application/json"})
 }
 
+// ensure asks the backend to make case_id usable in CFD_HOME with the least
+// work (the resume entry point). The backend replies (as the "result"):
+//   {"status":"ready", "state":...}  -- staged and usable
+//   {"status":"need_upload"}         -- caller should upload the case, then retry
+// force=true re-stages from the file-server upload even if a copy is staged
+// (clean replace) -- for when a different backend holds the newer copy.
+func (c *Client) ensure(caseID string, force bool) (any, error) {
+	if caseID == "" {
+		return nil, fmt.Errorf("ensure: case-id is required")
+	}
+	endpoint := c.base + "/api/ensure/" + escPath(caseID)
+	if force {
+		endpoint += "?force=1"
+	}
+	return c.requestJSON("POST", endpoint, "ensure", "", false,
+		map[string]string{"Accept": "application/json"})
+}
+
 // downstage packs a processed case on the server and publishes it for download.
 func (c *Client) downstage(casePath string) (any, error) {
 	if casePath == "" {

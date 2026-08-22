@@ -448,10 +448,11 @@ func (c *Client) upstage(remoteName, wd string) (any, error) {
 	q.Set("wd", wd)
 	q.Set("url", fileURL)
 	endpoint := c.base + "/api/upstage/" + escPath(wd) + "?" + q.Encode()
-	notFound := fmt.Sprintf(
-		"backend could not reach the uploaded file or resolve the working dir "+
-			"(url=%s, wd=%s)", fileURL, wd)
-	return c.requestJSON("POST", endpoint, "upstage", notFound, false,
+	// No notFound override: the backend now distinguishes "file not found on the
+	// server" (404, usually a wrong/missing name) from "file server unreachable"
+	// (502), each with a specific message -- relay it verbatim rather than
+	// collapsing both into one blanket "could not reach" string.
+	return c.requestJSON("POST", endpoint, "upstage", "", false,
 		map[string]string{"Accept": "application/json"})
 }
 

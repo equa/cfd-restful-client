@@ -131,12 +131,21 @@ cfd-client download  3f9c-case.downstage C:\ida\results\ # fetch the result
 `upstage` tells the backend to fetch the already-uploaded file and unpack it into
 a working directory `--wd` (name or path-like string, under the server's
 CFD_HOME; defaults to the remote name's stem). The file's URL is inferred from
-`remote_name` and this client's `server_url` (`<server_url>/api/rw/<remote_name>`);
-if the file server and backend are on different hosts, the backend must be able
-to reach that URL. It is sent as a POST so the reply is always JSON (a GET would
-redirect to the cockpit page). The backend starts the unpack as a background job
-and replies `{"status": "started", "case_path": ...}` — it does not wait for
-completion.
+`remote_name` and this client's `server_url` (`<server_url>/api/rw/<remote_name>`).
+It is sent as a POST so the reply is always JSON (a GET would redirect to the
+cockpit page). The backend starts the unpack as a background job and replies
+`{"status": "started", "case_path": ...}` — it does not wait for completion.
+
+> **`server_url` must be reachable *from the backend*, not just from you.**
+> upstage hands the backend that URL to fetch, so it has to resolve from inside
+> the backend as well. A browser-style `http://localhost:8080` is the classic
+> trap: `localhost` inside the backend container is the container itself, and
+> `:8080` is the nginx port, which isn't open there — the fetch fails with
+> "backend could not reach the uploaded file". Use an address that works from
+> both sides — the host's LAN/bridge IP (e.g. `http://192.168.122.1:8080`), or
+> the backend's own service port (`:5001`) when the client runs on the host. A
+> plain `upload`/`download`/`ls` is unaffected (only the client talks to the
+> server); it's specifically upstage's backend-initiated fetch that needs this.
 
 `downstage` is the reverse: it packs the processed case at `case_path`
 (reconstruct + zip) and publishes it to the server's file store as

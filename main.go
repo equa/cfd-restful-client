@@ -89,6 +89,8 @@ usage: cfd-client [--config PATH] [--host TAG] [--server-url URL] [--progress] <
   upstage   <remote_name> [--wd NAME]   stage an uploaded file server-side
   ensure    <case-id> [--force]         make sure a case is staged (resume); backend
                                         stages from the file server if needed
+  save      <case-id> [--since MTIME]   newest downloadable archive of a case
+                                        (publishes only if newer work exists)
   downstage <case_path>                 pack a processed case, publish for download
   url       [--open]        print (or open) the cfd-frontend URL
   config                    dump the resolved backend config
@@ -330,6 +332,23 @@ func run(args []string) int {
 			return emitErr("usage error: ensure requires <case-id>")
 		}
 		return dispatch(client.ensure(pos[0], force))
+
+	case "save":
+		var since string
+		pos, err := parseCmd(cmdArgs, nil, map[string]*string{"since": &since})
+		if err != nil {
+			return emitErr("usage error: " + err.Error())
+		}
+		if len(pos) != 1 {
+			return emitErr("usage error: save requires <case-id>")
+		}
+		var s float64
+		if since != "" {
+			if s, err = strconv.ParseFloat(since, 64); err != nil {
+				return emitErr("usage error: --since must be a number (mtime)")
+			}
+		}
+		return dispatch(client.save(pos[0], s))
 
 	case "downstage":
 		pos, err := parseCmd(cmdArgs, nil, nil)

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -458,8 +459,10 @@ func (c *Client) upstage(remoteName, wd string) (any, error) {
 
 // ensure asks the backend to make case_id usable in CFD_HOME with the least
 // work (the resume entry point). The backend replies (as the "result"):
-//   {"status":"ready", "state":...}  -- staged and usable
-//   {"status":"need_upload"}         -- caller should upload the case, then retry
+//
+//	{"status":"ready", "state":...}  -- staged and usable
+//	{"status":"need_upload"}         -- caller should upload the case, then retry
+//
 // force=true re-stages from the file-server upload even if a copy is staged
 // (clean replace) -- for when a different backend holds the newer copy.
 func (c *Client) ensure(caseID string, force bool) (any, error) {
@@ -471,6 +474,28 @@ func (c *Client) ensure(caseID string, force bool) (any, error) {
 		endpoint += "?force=1"
 	}
 	return c.requestJSON("POST", endpoint, "ensure", "", false,
+		map[string]string{"Accept": "application/json"})
+}
+
+// save asks the backend for the newest downloadable archive of a case -- the
+// save entry point, mirror of ensure. `since` is the archive mtime recorded on
+// the last save (0 to force a check). The backend replies (as "result"):
+//
+//	{"status":"up_to_date"}                                   -- keep the local save
+//	{"status":"ready","url":...,"name":...,"mtime":...,"published":bool}
+//
+// On "ready", record `mtime` (pass it back as `since` next time) and download
+// the archive by `name`. The backend publishes a fresh <case>.downstage only
+// when the staged case is newer than any existing archive.
+func (c *Client) save(caseID string, since float64) (any, error) {
+	if caseID == "" {
+		return nil, fmt.Errorf("save: case-id is required")
+	}
+	endpoint := c.base + "/api/save/" + escPath(caseID)
+	if since > 0 {
+		endpoint += "?since=" + strconv.FormatFloat(since, 'f', -1, 64)
+	}
+	return c.requestJSON("POST", endpoint, "save", "", false,
 		map[string]string{"Accept": "application/json"})
 }
 

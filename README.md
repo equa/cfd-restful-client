@@ -113,6 +113,7 @@ cfd-client [--host TAG] exists    <remote_name>
 cfd-client [--host TAG] rm        <remote_name>
 cfd-client [--host TAG] upstage   <remote_name> [--wd <name-or-path>]  # stage server-side
 cfd-client [--host TAG] ensure    <case-id> [--force]  # resume: ensure staged (least work)
+cfd-client [--host TAG] save      <case-id> [--since MTIME]  # save: newest archive to download
 cfd-client [--host TAG] downstage <case_path>                          # pack + publish for download
 cfd-client [--host TAG] url       [--open]  # print / open the cfd-frontend
 cfd-client [--host TAG] config              # dump the resolved backend config
@@ -163,6 +164,21 @@ upload even when a copy is already staged (a clean replace) — for when you kno
 *different* backend holds the newer copy and this one's is stale; you own that
 call. A typical resume is one call: `cfd-client ensure <case-id>` → if
 `need_upload`, `upload` then `ensure` again.
+
+`save` is the **save** entry point — the mirror of `ensure`. It answers "do you
+have anything newer than this for me?" doing the least work, so IDA doesn't force
+a needless re-publish. Pass `--since <mtime>` (the archive mtime you recorded on
+the last save; omit it the first time). The backend replies (as `result`):
+- `{"status": "up_to_date"}` — the staged case hasn't advanced past `--since`;
+  keep your local save.
+- `{"status": "ready", "name": ..., "url": ..., "mtime": ..., "published": ...}`
+  — the newest archive to download: an existing `<case>.downstage` reused, or a
+  freshly published one (`published` says which). Record `mtime` and pass it back
+  as `--since` next time, then `download` the `name`.
+
+Like `ensure`, you pass only the case-id — the backend publishes to and looks in
+its own file store. It republishes only when the staged case is newer than any
+existing archive ("when in doubt, downstage").
 
 `downstage` is the reverse: it packs the processed case at `case_path`
 (reconstruct + zip) and publishes it to the server's file store as

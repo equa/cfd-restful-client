@@ -495,8 +495,26 @@ func (c *Client) save(caseID string, since float64) (any, error) {
 	if since > 0 {
 		endpoint += "?since=" + strconv.FormatFloat(since, 'f', -1, 64)
 	}
-	return c.requestJSON("POST", endpoint, "save", "", false,
+	result, err := c.requestJSON("POST", endpoint, "save", "", false,
 		map[string]string{"Accept": "application/json"})
+	return c.fixDownloadURL(result), err
+}
+
+// fixDownloadURL rewrites a publish response's `url` to one built from THIS
+// client's base + the returned `name`. The backend can't know its own external
+// URL behind a proxy that hides the host:port (nginx `Host $host` drops the
+// port, and sends no X-Forwarded-*), so its `url` may carry the wrong port. The
+// client, by contrast, knows exactly how it reached the server -- and that is
+// where the download will go -- so it is the authority for the URL.
+func (c *Client) fixDownloadURL(result any) any {
+	m, ok := result.(map[string]any)
+	if !ok {
+		return result
+	}
+	if name, ok := m["name"].(string); ok && name != "" {
+		m["url"] = c.rw(name)
+	}
+	return m
 }
 
 // downstage packs a processed case on the server and publishes it for download.
@@ -505,9 +523,10 @@ func (c *Client) downstage(casePath string) (any, error) {
 		return nil, fmt.Errorf("downstage: case_path is required")
 	}
 	endpoint := c.base + "/api/downstage/" + escPath(casePath)
-	return c.requestJSON("POST", endpoint, "downstage",
+	result, err := c.requestJSON("POST", endpoint, "downstage",
 		"case not found on server: "+casePath, false,
 		map[string]string{"Accept": "application/json"})
+	return c.fixDownloadURL(result), err
 }
 
 // -- helpers ---------------------------------------------------------------- //

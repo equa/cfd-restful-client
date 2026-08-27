@@ -52,6 +52,15 @@ func emitErr(msg string) int {
 	return 1
 }
 
+// emitStatus reports a well-behaved outcome that is NOT a tool failure: exit 0
+// (the call ran fine), with an explicit ok flag -- false when the requested
+// artifact isn't there (e.g. status "missing"), so IDA can distinguish "nothing
+// to fetch" from a crash.
+func emitStatus(ok bool, result any) int {
+	emit(okEnvelope{OK: ok, Exit: 0, Result: result})
+	return 0
+}
+
 // makeProgressEmitter returns a callback that writes throttled {"progress": pct}
 // NDJSON lines to stdout: the first call, then only when the integer percent has
 // advanced by 5 or reached 100 -- never the same value twice.
@@ -348,7 +357,17 @@ func run(args []string) int {
 				return emitErr("usage error: --since must be a number (mtime)")
 			}
 		}
-		return dispatch(client.save(pos[0], s))
+		result, err := client.save(pos[0], s)
+		if err != nil {
+			return emitErr(err.Error())
+		}
+		// "missing" (no case and no archive) is a well-behaved outcome, not a
+		// failure: exit 0 so IDA can tell it apart from a crash, with ok:false to
+		// signal that no archive was produced.
+		if m, ok := result.(map[string]any); ok && m["status"] == "missing" {
+			return emitStatus(false, result)
+		}
+		return dispatch(result, nil)
 
 	case "downstage":
 		pos, err := parseCmd(cmdArgs, nil, nil)

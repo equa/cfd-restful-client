@@ -529,8 +529,9 @@ func (c *Client) downstage(casePath string) (any, error) {
 		return nil, fmt.Errorf("downstage: case_path is required")
 	}
 	endpoint := c.base + "/api/downstage/" + escPath(casePath)
-	result, err := c.requestJSON("POST", endpoint, "downstage",
-		"case not found on server: "+casePath, false,
+	// No notFound override: a not-staged case now comes back as 200
+	// {"status":"missing"} (a well-behaved outcome), relayed as-is.
+	result, err := c.requestJSON("POST", endpoint, "downstage", "", false,
 		map[string]string{"Accept": "application/json"})
 	return c.fixDownloadURL(result), err
 }

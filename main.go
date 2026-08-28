@@ -244,15 +244,7 @@ func run(args []string) int {
 		if len(pos) != 2 {
 			return emitErr("usage error: download requires <remote_name> <local_dest>")
 		}
-		result, err := client.download(pos[0], pos[1])
-		if err != nil {
-			return emitErr(err.Error())
-		}
-		// A missing file is not a failure (same as save): exit 0, ok:false.
-		if m, ok := result.(map[string]any); ok && m["status"] == "missing" {
-			return emitStatus(false, result)
-		}
-		return dispatch(result, nil)
+		return dispatchStatus(client.download(pos[0], pos[1]))
 
 	case "ls":
 		pos, err := parseCmd(cmdArgs, nil, nil)
@@ -365,17 +357,7 @@ func run(args []string) int {
 				return emitErr("usage error: --since must be a number (mtime)")
 			}
 		}
-		result, err := client.save(pos[0], s)
-		if err != nil {
-			return emitErr(err.Error())
-		}
-		// "missing" (no case and no archive) is a well-behaved outcome, not a
-		// failure: exit 0 so IDA can tell it apart from a crash, with ok:false to
-		// signal that no archive was produced.
-		if m, ok := result.(map[string]any); ok && m["status"] == "missing" {
-			return emitStatus(false, result)
-		}
-		return dispatch(result, nil)
+		return dispatchStatus(client.save(pos[0], s))
 
 	case "downstage":
 		pos, err := parseCmd(cmdArgs, nil, nil)
@@ -385,7 +367,7 @@ func run(args []string) int {
 		if len(pos) != 1 {
 			return emitErr("usage error: downstage requires <case_path>")
 		}
-		return dispatch(client.downstage(pos[0]))
+		return dispatchStatus(client.downstage(pos[0]))
 
 	case "cleanup":
 		if len(cmdArgs) != 0 {
@@ -418,6 +400,27 @@ func run(args []string) int {
 func dispatch(result any, err error) int {
 	if err != nil {
 		return emitErr(err.Error())
+	}
+	return emitOK(result)
+}
+
+// dispatchStatus emits a publish/fetch result (save, downstage, download). A
+// transport/HTTP failure (err) is a real error -> exit 1. Otherwise the call
+// succeeded (exit 0); `ok` reflects the outcome, not tool health: true for a
+// usable result (ready/published/up_to_date, or a plain success with no status),
+// false for a well-behaved negative (missing/new/busy/...). So a case that is
+// simply in the wrong state, or a file that isn't there, never looks like a crash.
+func dispatchStatus(result any, err error) int {
+	if err != nil {
+		return emitErr(err.Error())
+	}
+	if m, ok := result.(map[string]any); ok {
+		switch m["status"] {
+		case nil, "ready", "published", "up_to_date":
+			return emitOK(result)
+		default:
+			return emitStatus(false, result)
+		}
 	}
 	return emitOK(result)
 }

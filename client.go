@@ -327,9 +327,15 @@ func (c *Client) download(remoteName, localDest string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("download: %v", err)
 	}
-	resp, err := c.do(req, "download", "not found on server: "+remoteName, false)
+	// empty404: a missing file is a well-behaved outcome (like save's "missing"),
+	// not a failure -- do() returns (nil, nil) on 404 so we report it rather than
+	// erroring out (the caller maps it to exit 0 / ok:false).
+	resp, err := c.do(req, "download", "", true)
 	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return map[string]any{"status": "missing", "name": remoteName}, nil
 	}
 	defer resp.Body.Close()
 

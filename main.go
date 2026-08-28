@@ -244,7 +244,15 @@ func run(args []string) int {
 		if len(pos) != 2 {
 			return emitErr("usage error: download requires <remote_name> <local_dest>")
 		}
-		return dispatch(client.download(pos[0], pos[1]))
+		result, err := client.download(pos[0], pos[1])
+		if err != nil {
+			return emitErr(err.Error())
+		}
+		// A missing file is not a failure (same as save): exit 0, ok:false.
+		if m, ok := result.(map[string]any); ok && m["status"] == "missing" {
+			return emitStatus(false, result)
+		}
+		return dispatch(result, nil)
 
 	case "ls":
 		pos, err := parseCmd(cmdArgs, nil, nil)

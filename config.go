@@ -5,15 +5,35 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
 
 const configBasename = "cfd_client_config.json"
 
-// findConfig locates the config file, mirroring the Python search order:
-// explicit path, then $CFD_CLIENT_CONFIG, then next to the executable, then CWD.
-// Returns "" if none exists.
+// configDirName is our subdirectory inside the per-user config directory.
+const configDirName = "ice-cfd"
+
+// userConfigDir returns the per-user config directory holding configDirName:
+// %LOCALAPPDATA% on Windows, $XDG_CONFIG_HOME (default ~/.config) elsewhere.
+// Returns "" when the environment gives us nothing to go on.
+func userConfigDir() string {
+	if runtime.GOOS == "windows" {
+		return os.Getenv("LOCALAPPDATA")
+	}
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return dir
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".config")
+	}
+	return ""
+}
+
+// findConfig locates the config file: explicit path, then $CFD_CLIENT_CONFIG,
+// then the per-user config dir (see userConfigDir), then next to the
+// executable, then CWD. Returns "" if none exists.
 func findConfig(explicit string) string {
 	var candidates []string
 	if explicit != "" {
@@ -21,6 +41,9 @@ func findConfig(explicit string) string {
 	}
 	if env := os.Getenv("CFD_CLIENT_CONFIG"); env != "" {
 		candidates = append(candidates, env)
+	}
+	if dir := userConfigDir(); dir != "" {
+		candidates = append(candidates, filepath.Join(dir, configDirName, configBasename))
 	}
 	if exe, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(exe), configBasename))

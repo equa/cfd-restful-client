@@ -40,7 +40,10 @@ Everything below uses `cfd-client`; on Windows it is `cfd-client.exe`.
 ## Configuration
 
 `cfd_client_config.json`, searched in this order: `--config <path>`, the
-`CFD_CLIENT_CONFIG` env var, next to the executable, then the current dir.
+`CFD_CLIENT_CONFIG` env var, the per-user config dir
+(`%LOCALAPPDATA%\ice-cfd\` on Windows, `$XDG_CONFIG_HOME/ice-cfd/` —
+default `~/.config/ice-cfd/` — elsewhere), next to the executable, then the
+current dir.
 
 The config holds one or more **named backends**; `--host <tag>` selects one,
 otherwise `default_backend` is used. Other top-level keys (e.g. `wsl`) are

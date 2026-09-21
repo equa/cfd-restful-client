@@ -88,8 +88,18 @@ jobs:
             jq -r '.components[] | "\(.name) \(.version)"' "sbom/${NAME}.cdx.json"
           done
 
+      # POSTPONED, same as in cfd-restful-backend: artifact attestations are not
+      # in the equa organisation's GitHub plan --
+      #
+      #     Failed to persist attestation: Feature not available for the equa
+      #     organization. To enable this feature, please upgrade the billing
+      #     plan, or make this repository public.
+      #
+      # Gated rather than deleted; set the repository variable SBOM_ATTESTATION
+      # to "true" to turn it on with no code change. The upload below keeps the
+      # SBOM either way.
       - name: Attest the SBOMs
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && vars.SBOM_ATTESTATION == 'true'
         uses: actions/attest-sbom@v2
         with:
           subject-path: dist/cfd-client-linux-amd64

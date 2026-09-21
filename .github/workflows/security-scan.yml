@@ -1,0 +1,103 @@
+# SBOM and vulnerability scanning for cfd-client.
+#
+# cfd-client is the odd one out in the CFD stack: it is not a container, it is a
+# static binary that ships INSIDE IDA ICE, on customer machines. Nothing in
+# cfd-restful-backend's image pipeline covers it, so it needs its own.
+#
+# It has no third-party dependencies at all -- go.mod declares none -- which
+# sounds like it makes this pointless. It does the opposite: with no
+# dependencies, the ONLY third-party code in the binary is the Go standard
+# library, statically linked in. Standard library vulnerabilities (net/http,
+# crypto/tls, archive/zip) are real, they are fixed by rebuilding with a newer
+# toolchain, and nothing will tell us about them unless something looks. That is
+# what govulncheck is for, and it is the more precise tool here anyway: it
+# reports only vulnerabilities on code paths this binary actually reaches.
+#
+# The stack-level documentation lives in cfd-restful-backend/docs/sbom.md.
+name: Security scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays, 06:00 UTC — same slot as the backend's scan, so the whole stack
+    # is reported on together.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  scan:
+    name: govulncheck + SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Track the toolchain rather than pinning it: a scheduled run is
+          # useful precisely because it picks up a Go release that fixed a
+          # standard library CVE. go.mod's `go 1.21` is the language floor, not
+          # the toolchain to build with.
+          go-version: stable
+          check-latest: true
+
+      - name: govulncheck
+        # Report, do not block — consistent with the rest of the stack. A finding
+        # here is a rebuild on a newer Go, which is a decision, not an emergency.
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          echo "## govulncheck" >> "$GITHUB_STEP_SUMMARY"
+          if govulncheck ./... | tee govulncheck.txt; then
+            echo "No known vulnerabilities on reachable code paths." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '```'
+              cat govulncheck.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Build the shipped binaries
+        run: make dist
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      # Syft reads Go buildinfo, which survives the `-s -w` strip in the Makefile
+      # (that drops the symbol and DWARF tables, not the module metadata). So the
+      # SBOM records the exact toolchain the shipped binary was built with, which
+      # is the one fact that matters for a stdlib CVE.
+      - name: Generate SBOM
+        run: |
+          mkdir -p sbom
+          for BIN in dist/cfd-client.exe dist/cfd-client-linux-amd64; do
+            NAME=$(basename "$BIN")
+            syft scan "file:${BIN}" -o "cyclonedx-json=sbom/${NAME}.cdx.json" --quiet
+            echo "=== ${NAME} ==="
+            jq -r '.components[] | "\(.name) \(.version)"' "sbom/${NAME}.cdx.json"
+          done
+
+      - name: Attest the SBOMs
+        if: github.event_name == 'push'
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: dist/cfd-client-linux-amd64
+          sbom-path: sbom/cfd-client-linux-amd64.cdx.json
+
+      - name: Upload SBOMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfd-client-sbom-${{ github.sha }}
+          path: sbom/
+          retention-days: 90
